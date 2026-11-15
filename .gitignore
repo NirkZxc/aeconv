@@ -1,0 +1,39 @@
+﻿# Rust
+/target/
+**/*.rs.bk
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local test artifacts
+/test_input.*
+/test.png
+/test.svg
+/test_alpha.jpg
+/gif_out.png
+/svg_out.png
+/svg_output.png
+/tiff_out.png
+/test_output/
+/check_ico*
+
+# Build artifacts
+*.o
+*.pdb
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp

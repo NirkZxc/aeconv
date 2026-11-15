@@ -1,0 +1,65 @@
+﻿[package]
+name = "aeconv"
+version = "0.1.0"
+edition = "2024"
+description = "Any Extension Converter - Cross-platform image conversion CLI"
+license = "MIT"
+repository = "https://github.com/nirkzxc/aeconv"
+readme = "README.md"
+keywords = ["image", "converter", "cli", "png", "jpg", "webp", "ico", "icns", "svg"]
+categories = ["command-line-utilities", "graphics", "image-processing"]
+
+[dependencies]
+# CLI argument parsing
+clap = { version = "4.5", features = ["derive", "help", "usage"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Image processing - core formats (pure Rust)
+image = { version = "0.25", features = ["png", "jpeg", "gif", "bmp", "tiff", "tga", "pnm", "ico", "qoi", "webp"] }
+
+# WebP support (additional features)
+webp = "0.3"
+
+# SVG rasterization - let resvg manage tiny-skia version
+resvg = { version = "0.38", features = ["text", "raster-images"] }
+usvg = "0.38"
+
+# ICNS support
+icns = "0.5"
+
+# ICO support
+ico = "0.6"
+
+# File system utilities
+walkdir = "2.4"
+tempfile = "3.10"
+
+# Path handling with Unicode support
+camino = "1.1"
+
+# Parallel processing
+rayon = "1.10"
+
+# Logging (optional, for debug)
+tracing = { version = "0.1", features = ["std"], optional = true }
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"], optional = true }
+
+[features]
+default = []
+debug = ["tracing", "tracing-subscriber"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = "z"
+
+[[bin]]
+name = "aeconv"
+path = "src/main.rs"
