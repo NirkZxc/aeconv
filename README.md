@@ -1,7 +1,7 @@
 # AEConv — Any Extension Converter
 
 [![Crates.io](https://img.shields.io/crates/v/aeconv.svg)](https://crates.io/crates/aeconv)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/NirkZxc/aeconv/ci.yml)](https://github.com/NirkZxc/aeconv/actions)
+[![Latest Release](https://img.shields.io/github/v/release/NirkZxc/aeconv)](https://github.com/NirkZxc/aeconv/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A cross-platform command-line utility for converting images between various formats. Built with Rust for performance and reliability.
