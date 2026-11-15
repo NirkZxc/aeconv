@@ -1,7 +1,7 @@
 # AEConv — Any Extension Converter
 
 [![Crates.io](https://img.shields.io/crates/v/aeconv.svg)](https://crates.io/crates/aeconv)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/almaz/aeconv/ci.yml)](https://github.com/almaz/aeconv/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/NirkZxc/aeconv/ci.yml)](https://github.com/NirkZxc/aeconv/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A cross-platform command-line utility for converting images between various formats. Built with Rust for performance and reliability.
@@ -27,12 +27,12 @@ cargo install aeconv
 
 ### Pre-built Binaries
 
-Download the latest release for your platform from the [releases page](https://github.com/almaz/aeconv/releases).
+Download the latest release for your platform from the [releases page](https://github.com/NirkZxc/aeconv/releases).
 
 ### From Source
 
 ```bash
-git clone https://github.com/almaz/aeconv
+git clone https://github.com/NirkZxc/aeconv
 cd aeconv
 cargo build --release
 # Binary will be at target/release/aeconv

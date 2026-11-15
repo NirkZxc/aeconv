@@ -1,7 +1,7 @@
 # AEConv — Конвертер любых расширений
 
 [![Crates.io](https://img.shields.io/crates/v/aeconv.svg)](https://crates.io/crates/aeconv)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/almaz/aeconv/ci.yml)](https://github.com/almaz/aeconv/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/NirkZxc/aeconv/ci.yml)](https://github.com/NirkZxc/aeconv/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Кроссплатформенная консольная утилита для конвертации изображений между различными форматами. Написана на Rust для производительности и надёжности.
@@ -27,12 +27,12 @@ cargo install aeconv
 
 ### Готовые бинарные файлы
 
-Скачайте последний релиз для вашей платформы на [странице релизов](https://github.com/almaz/aeconv/releases).
+Скачайте последний релиз для вашей платформы на [странице релизов](https://github.com/NirkZxc/aeconv/releases).
 
 ### Из исходного кода
 
 ```bash
-git clone https://github.com/almaz/aeconv
+git clone https://github.com/NirkZxc/aeconv
 cd aeconv
 cargo build --release
 # Бинарный файл будет в target/release/aeconv
