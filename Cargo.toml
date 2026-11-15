@@ -2,11 +2,11 @@
 name = "aeconv"
 version = "0.1.0"
 edition = "2024"
-description = "Any Extension Converter - Cross-platform image conversion CLI"
+description = "Extensible cross-platform file conversion CLI written in Rust, starting with images."
 license = "MIT"
 repository = "https://github.com/nirkzxc/aeconv"
 readme = "README.md"
-keywords = ["image", "converter", "cli", "png", "jpg", "webp", "ico", "icns", "svg"]
+keywords = ["file-conversion", "converter", "cli", "image", "rust"]
 categories = ["command-line-utilities", "graphics", "image-processing"]
 
 [dependencies]
