@@ -7,7 +7,7 @@ license = "MIT"
 repository = "https://github.com/nirkzxc/aeconv"
 readme = "README.md"
 keywords = ["file-conversion", "converter", "cli", "image", "rust"]
-categories = ["command-line-utilities", "graphics", "image-processing"]
+categories = ["command-line-utilities", "graphics"]
 
 [dependencies]
 # CLI argument parsing
