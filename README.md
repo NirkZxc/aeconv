@@ -55,6 +55,10 @@ aeconv convert --from jpg --to ico photo.jpg
 # With custom output path
 aeconv jpg-to-ico photo.jpg -o /path/to/output.ico
 
+# Output extension must match target format (validated)
+aeconv convert --from png --to webp image.png --output result.webp   # OK
+aeconv convert --from png --to webp image.png --output result.png    # Error: extension mismatch
+
 # With quality control (1-100)
 aeconv convert --from png --to jpg image.png -q 85
 

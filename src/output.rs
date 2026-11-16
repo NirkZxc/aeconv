@@ -16,8 +16,9 @@ pub fn determine_output_path(
     target_format: ImageFormat,
     config: &OutputConfig,
 ) -> Result<Utf8PathBuf> {
-    // If explicit output path provided, use it
+    // If explicit output path provided, validate and use it
     if let Some(ref output) = config.output_path {
+        validate_output_extension(output, target_format)?;
         return Ok(output.clone());
     }
 
@@ -42,6 +43,36 @@ pub fn determine_output_path(
     let output_path = parent.join(output_filename);
 
     Ok(output_path)
+}
+
+/// Validate that the output file extension matches the target format
+fn validate_output_extension(output_path: &Utf8Path, target_format: ImageFormat) -> Result<()> {
+    let output_ext = output_path
+        .extension()
+        .ok_or_else(|| {
+            AeconvError::InvalidArgument(
+                "Output file has no extension. Specify a valid extension for the target format."
+                    .into(),
+            )
+        })?
+        .to_lowercase();
+
+    let valid_extensions: Vec<String> = target_format
+        .extensions()
+        .iter()
+        .map(|e| e.to_lowercase())
+        .collect();
+
+    if !valid_extensions.contains(&output_ext) {
+        return Err(AeconvError::InvalidArgument(format!(
+            "Output file extension '{}' does not match target format '{}'. Expected one of: {}",
+            output_ext,
+            target_format.name(),
+            valid_extensions.join(", ")
+        )));
+    }
+
+    Ok(())
 }
 
 /// Check if output file exists and handle overwrite
@@ -115,6 +146,56 @@ mod tests {
         };
         let output = determine_output_path(input, ImageFormat::Ico, &config).unwrap();
         assert_eq!(output.file_name(), Some("output.ico"));
+    }
+
+    #[test]
+    fn test_determine_output_path_with_custom_invalid_ext() {
+        let input = Utf8Path::new("photo.jpg");
+        let config = OutputConfig {
+            output_path: Some(Utf8PathBuf::from("output.png")),
+            ..Default::default()
+        };
+        let result = determine_output_path(input, ImageFormat::Ico, &config);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("extension"));
+        assert!(err.contains("png"));
+        assert!(err.contains("ico"));
+    }
+
+    #[test]
+    fn test_determine_output_path_with_custom_no_ext() {
+        let input = Utf8Path::new("photo.jpg");
+        let config = OutputConfig {
+            output_path: Some(Utf8PathBuf::from("output")),
+            ..Default::default()
+        };
+        let result = determine_output_path(input, ImageFormat::Png, &config);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("extension"));
+    }
+
+    #[test]
+    fn test_determine_output_path_with_custom_case_insensitive() {
+        let input = Utf8Path::new("photo.jpg");
+        let config = OutputConfig {
+            output_path: Some(Utf8PathBuf::from("output.PNG")),
+            ..Default::default()
+        };
+        let output = determine_output_path(input, ImageFormat::Png, &config).unwrap();
+        assert_eq!(output.file_name(), Some("output.PNG"));
+    }
+
+    #[test]
+    fn test_determine_output_path_with_custom_in_subdir() {
+        let input = Utf8Path::new("photo.jpg");
+        let config = OutputConfig {
+            output_path: Some(Utf8PathBuf::from("converted/result.webp")),
+            ..Default::default()
+        };
+        let output = determine_output_path(input, ImageFormat::WebP, &config).unwrap();
+        assert_eq!(output.as_str(), "converted/result.webp");
     }
 
     #[test]

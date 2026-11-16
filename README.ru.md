@@ -55,6 +55,10 @@ aeconv convert --from jpg --to ico photo.jpg
 # С указанием пути для результата
 aeconv jpg-to-ico photo.jpg -o /path/to/output.ico
 
+# Расширение выходного файла должно соответствовать целевому формату (валидация)
+aeconv convert --from png --to webp image.png --output result.webp   # OK
+aeconv convert --from png --to webp image.png --output result.png    # Ошибка: расширение не совпадает
+
 # С контролем качества (1-100)
 aeconv convert --from png --to jpg image.png -q 85
 

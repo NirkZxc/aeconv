@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2024-11-15
+## [0.1.1] - 2026-11-16
+
+### Added
+- Output extension validation against the target format
+- Case-insensitive extension matching
+- Support for custom output paths in subdirectories
+
+### Fixed
+- Clear error messages for missing or mismatched output extensions
+
+## [0.1.0] - 2026-11-15
 
 ### Added
 - Initial release of AEConv (Any Extension Converter)
@@ -53,6 +63,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI interface: aligned README with actual subcommand interface (`list`, `formats`, `info` instead of global flags)
 - Transparency handling: PNG→JPEG flattens alpha against white background (documented behavior)
 - Documentation: updated format table to reflect ICNS encode-only, corrected CLI usage examples
+
+### Added (Output Validation)
+- `--output` / `-o` option now validates that output file extension matches target format
+- Rejects mismatched extensions with clear error message (e.g., "Output file extension 'png' does not match target format 'WebP'. Expected one of: webp")
+- Case-insensitive extension matching supported
+- Subdirectory paths supported (e.g., `--output converted/result.webp`)
 
 ### Known Limitations (Phase 1)
 - GIF: Multi-frame decoding not supported (first frame only)
