@@ -1,3 +1,4 @@
+use crate::codecs::RgbColor;
 use crate::errors::{AeconvError, Result};
 use crate::formats::ImageFormat;
 use camino::{Utf8Path, Utf8PathBuf};
@@ -8,6 +9,7 @@ pub struct OutputConfig {
     pub output_path: Option<Utf8PathBuf>,
     pub force_overwrite: bool,
     pub quality: Option<u8>,
+    pub background_color: RgbColor,
 }
 
 /// Determine output path based on input and configuration

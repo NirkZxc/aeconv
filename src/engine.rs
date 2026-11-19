@@ -71,6 +71,7 @@ impl ConversionEngine {
             quality,
             preserve_transparency: decoded.metadata.has_alpha
                 && request.target_format.supports_transparency(),
+            background_color: request.config.background_color,
             _dpi: decoded.metadata.dpi,
             _icc_profile: decoded.metadata.color_profile.clone(),
         };
@@ -110,15 +111,6 @@ mod tests {
         let mut img = image::ImageBuffer::new(100, 100);
         for (x, _y, pixel) in img.enumerate_pixels_mut() {
             *pixel = image::Rgba([(x % 256) as u8, (x % 256) as u8, 128, 255]);
-        }
-        image::DynamicImage::ImageRgba8(img)
-    }
-
-    fn create_test_png_with_alpha() -> image::DynamicImage {
-        let mut img = image::ImageBuffer::new(100, 100);
-        for (x, _y, pixel) in img.enumerate_pixels_mut() {
-            let alpha = if x < 50 { 255 } else { 0 };
-            *pixel = image::Rgba([255, 0, 0, alpha]);
         }
         image::DynamicImage::ImageRgba8(img)
     }
@@ -253,8 +245,12 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_png_alpha_to_jpg_flattens() {
-        let dynamic = create_test_png_with_alpha();
+    fn test_convert_png_alpha_to_jpg_flattens_against_default_white() {
+        let dynamic = image::DynamicImage::ImageRgba8(image::ImageBuffer::from_pixel(
+            1,
+            1,
+            image::Rgba([200, 10, 20, 0]),
+        ));
 
         let temp_dir = tempfile::tempdir().unwrap();
         let input_path = temp_dir.path().join("test_alpha.png");
@@ -267,10 +263,61 @@ mod tests {
         };
 
         let result = ConversionEngine::convert(request).unwrap();
-        assert!(result.output_path.exists());
+        let converted = image::open(&result.output_path).unwrap().to_rgb8();
         assert_eq!(result.target_format, ImageFormat::Jpeg);
-        // JPEG doesn't support alpha, should be flattened
-        assert!(!result.input_metadata.has_alpha || result.target_format == ImageFormat::Jpeg);
+        assert_eq!(converted.get_pixel(0, 0), &image::Rgb([255, 255, 255]));
+    }
+
+    #[test]
+    fn test_convert_rgb_png_to_jpg_without_alpha() {
+        let dynamic = image::DynamicImage::ImageRgb8(image::ImageBuffer::from_pixel(
+            1,
+            1,
+            image::Rgb([40, 80, 120]),
+        ));
+        let temp_dir = tempfile::tempdir().unwrap();
+        let input_path = temp_dir.path().join("rgb.png");
+        dynamic.save(&input_path).unwrap();
+
+        let result = ConversionEngine::convert(ConversionRequest {
+            input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
+            target_format: ImageFormat::Jpeg,
+            config: OutputConfig::default(),
+        })
+        .unwrap();
+        let converted = image::open(&result.output_path).unwrap().to_rgb8();
+        let pixel = converted.get_pixel(0, 0);
+        assert!(pixel[0].abs_diff(40) <= 2);
+        assert!(pixel[1].abs_diff(80) <= 2);
+        assert!(pixel[2].abs_diff(120) <= 2);
+    }
+
+    #[test]
+    fn test_convert_png_alpha_to_jpg_uses_custom_background() {
+        let dynamic = image::DynamicImage::ImageRgba8(image::ImageBuffer::from_pixel(
+            1,
+            1,
+            image::Rgba([200, 10, 20, 0]),
+        ));
+        let temp_dir = tempfile::tempdir().unwrap();
+        let input_path = temp_dir.path().join("custom_background.png");
+        dynamic.save(&input_path).unwrap();
+
+        let request = ConversionRequest {
+            input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
+            target_format: ImageFormat::Jpeg,
+            config: OutputConfig {
+                background_color: crate::codecs::RgbColor::new(34, 51, 68),
+                ..OutputConfig::default()
+            },
+        };
+
+        let result = ConversionEngine::convert(request).unwrap();
+        let converted = image::open(&result.output_path).unwrap().to_rgb8();
+        let pixel = converted.get_pixel(0, 0);
+        assert!(pixel[0].abs_diff(34) <= 2);
+        assert!(pixel[1].abs_diff(51) <= 2);
+        assert!(pixel[2].abs_diff(68) <= 2);
     }
 
     #[test]
@@ -331,6 +378,129 @@ mod tests {
         assert!(result.output_path.exists());
         assert_eq!(result.target_format, ImageFormat::Gif);
         assert_eq!(result.source_format, ImageFormat::Png);
+    }
+
+    fn write_rgba_source(dir: &tempfile::TempDir, name: &str) -> Utf8PathBuf {
+        let source = image::DynamicImage::ImageRgba8(image::ImageBuffer::from_pixel(
+            1,
+            1,
+            image::Rgba([120, 80, 40, 128]),
+        ));
+        let path = dir.path().join(format!("{name}.png"));
+        source.save(&path).unwrap();
+        Utf8PathBuf::from_path_buf(path).unwrap()
+    }
+
+    #[test]
+    fn test_convert_rgba_to_qoi_preserves_alpha_despite_background_option() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let input_path = write_rgba_source(&temp_dir, "qoi_alpha");
+        let request = ConversionRequest {
+            input_path,
+            target_format: ImageFormat::Qoi,
+            config: OutputConfig {
+                background_color: crate::codecs::RgbColor::new(10, 20, 30),
+                ..OutputConfig::default()
+            },
+        };
+
+        let result = ConversionEngine::convert(request).unwrap();
+        let converted = image::open(&result.output_path).unwrap().to_rgba8();
+        assert_eq!(converted.get_pixel(0, 0), &image::Rgba([120, 80, 40, 128]));
+    }
+
+    #[test]
+    fn test_convert_rgba_to_png_webp_and_tiff_preserves_alpha_with_background_option() {
+        for (target_format, output_ext) in [
+            (ImageFormat::Png, "png"),
+            (ImageFormat::WebP, "webp"),
+            (ImageFormat::Tiff, "tiff"),
+        ] {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let input_path = write_rgba_source(&temp_dir, "source");
+            let output_path = temp_dir.path().join(format!("output.{output_ext}"));
+            let result = ConversionEngine::convert(ConversionRequest {
+                input_path,
+                target_format,
+                config: OutputConfig {
+                    output_path: Some(Utf8PathBuf::from_path_buf(output_path).unwrap()),
+                    background_color: crate::codecs::RgbColor::new(10, 20, 30),
+                    ..OutputConfig::default()
+                },
+            })
+            .unwrap();
+            let converted = image::open(&result.output_path).unwrap().to_rgba8();
+            assert_eq!(converted.get_pixel(0, 0)[3], 128, "{target_format:?} alpha");
+        }
+    }
+
+    #[test]
+    fn test_convert_rgba_to_bmp_and_pnm_flattens_to_custom_background() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        for target_format in [ImageFormat::Bmp, ImageFormat::Pnm] {
+            let input_path = write_rgba_source(&temp_dir, &format!("{target_format:?}"));
+            let result = ConversionEngine::convert(ConversionRequest {
+                input_path,
+                target_format,
+                config: OutputConfig {
+                    background_color: crate::codecs::RgbColor::new(34, 51, 68),
+                    ..OutputConfig::default()
+                },
+            })
+            .unwrap();
+            let converted = image::open(&result.output_path).unwrap().to_rgb8();
+            assert_eq!(
+                converted.get_pixel(0, 0),
+                &image::Rgb([77, 66, 54]),
+                "{target_format} flattened pixel"
+            );
+        }
+    }
+
+    #[test]
+    fn test_convert_rgba_to_tga_preserves_alpha_with_background_option() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let input_path = write_rgba_source(&temp_dir, "tga_alpha");
+        let output_path = temp_dir.path().join("output.tga");
+        let result = ConversionEngine::convert(ConversionRequest {
+            input_path,
+            target_format: ImageFormat::Tga,
+            config: OutputConfig {
+                output_path: Some(Utf8PathBuf::from_path_buf(output_path).unwrap()),
+                background_color: crate::codecs::RgbColor::new(10, 20, 30),
+                ..OutputConfig::default()
+            },
+        })
+        .unwrap();
+        let converted = image::open(&result.output_path).unwrap().to_rgba8();
+        assert_eq!(converted.get_pixel(0, 0), &image::Rgba([120, 80, 40, 128]));
+    }
+
+    #[test]
+    fn test_rgb_to_jpeg_ignores_custom_background() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let input_path = temp_dir.path().join("rgb_background.png");
+        image::DynamicImage::ImageRgb8(image::ImageBuffer::from_pixel(
+            1,
+            1,
+            image::Rgb([40, 80, 120]),
+        ))
+        .save(&input_path)
+        .unwrap();
+        let result = ConversionEngine::convert(ConversionRequest {
+            input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
+            target_format: ImageFormat::Jpeg,
+            config: OutputConfig {
+                background_color: crate::codecs::RgbColor::new(0, 255, 0),
+                ..OutputConfig::default()
+            },
+        })
+        .unwrap();
+        let converted = image::open(&result.output_path).unwrap().to_rgb8();
+        let pixel = converted.get_pixel(0, 0);
+        assert!(pixel[0].abs_diff(40) <= 2);
+        assert!(pixel[1].abs_diff(80) <= 2);
+        assert!(pixel[2].abs_diff(120) <= 2);
     }
 
     #[test]

@@ -76,6 +76,7 @@ impl ImageFormat {
                 | ImageFormat::WebP
                 | ImageFormat::Tiff
                 | ImageFormat::Tga
+                | ImageFormat::Qoi
                 | ImageFormat::Gif
                 | ImageFormat::Ico
                 | ImageFormat::Icns

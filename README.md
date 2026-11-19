@@ -62,6 +62,11 @@ aeconv convert --from png --to webp image.png --output result.png    # Error: ex
 # With quality control (1-100)
 aeconv convert --from png --to jpg image.png -q 85
 
+# Choose the background used when flattening transparency for JPEG
+aeconv convert --from png --to jpg image.png --background "#222222"
+aeconv convert --from png --to jpg image.png -b "#fff"
+aeconv convert --from png --to jpg image.png --background "255,0,128"
+
 # Force overwrite existing files
 aeconv png-to-webp image.png --force
 ```
@@ -101,6 +106,8 @@ aeconv --version
 
 **Note**: SVG encoding (vectorization) is not supported in Phase 1. Use dedicated tools like `potrace` for raster-to-vector conversion.
 
+**Note on transparency**: GIF supports binary transparency (transparent or opaque palette entries), not full 8-bit alpha.
+
 **Note on animated formats**: WebP, TIFF, and GIF are marked as supporting animation in the format table because they *can* contain multiple frames. However, AEConv Phase 1 only processes the first frame when decoding these formats. Multi-frame decoding and encoding will be added in Phase 2.
 
 ## Options
@@ -110,6 +117,7 @@ aeconv --version
 | `--output` | `-o` | Output file path (default: same directory as input with new extension) |
 | `--force` | `-f` | Overwrite existing output file |
 | `--quality` | `-q` | Quality for lossy formats (1-100, default: 90 for JPEG, 80 for WebP) |
+| `--background` | `-b` | Background color when flattening transparency (`#RGB`, `#RRGGBB`, or `R,G,B`; default: white) |
 | `--verbose` | `-v` | Show detailed conversion information |
 | `--help` | `-h` | Show help message |
 | `--version` | `-V` | Show version |

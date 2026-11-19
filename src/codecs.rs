@@ -5,6 +5,74 @@ use camino::Utf8Path;
 use image::{DynamicImage, ExtendedColorType, ImageEncoder, ImageReader};
 use std::io::Cursor;
 
+/// RGB background color used when an image's alpha channel must be flattened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RgbColor([u8; 3]);
+
+impl RgbColor {
+    pub const fn new(red: u8, green: u8, blue: u8) -> Self {
+        Self([red, green, blue])
+    }
+
+    pub const fn channels(self) -> [u8; 3] {
+        self.0
+    }
+}
+
+impl Default for RgbColor {
+    fn default() -> Self {
+        Self::new(255, 255, 255)
+    }
+}
+
+impl std::str::FromStr for RgbColor {
+    type Err = AeconvError;
+
+    fn from_str(value: &str) -> Result<Self> {
+        let invalid = || {
+            AeconvError::InvalidArgument(format!(
+                "Invalid background color '{}'. Use #RGB, #RRGGBB, or R,G,B (each value 0-255)",
+                value
+            ))
+        };
+
+        if let Some(hex) = value.strip_prefix('#') {
+            if !hex.is_ascii() {
+                return Err(invalid());
+            }
+            let channels = match hex.len() {
+                3 => hex
+                    .chars()
+                    .map(|digit| {
+                        digit
+                            .to_digit(16)
+                            .map(|value| (value * 17) as u8)
+                            .ok_or_else(invalid)
+                    })
+                    .collect::<Result<Vec<_>>>()?,
+                6 => (0..3)
+                    .map(|index| {
+                        u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16)
+                            .map_err(|_| invalid())
+                    })
+                    .collect::<Result<Vec<_>>>()?,
+                _ => return Err(invalid()),
+            };
+            return Ok(Self::new(channels[0], channels[1], channels[2]));
+        }
+
+        let channels = value
+            .split(',')
+            .map(|component| component.trim().parse::<u8>().map_err(|_| invalid()))
+            .collect::<Result<Vec<_>>>()?;
+        if channels.len() != 3 {
+            return Err(invalid());
+        }
+
+        Ok(Self::new(channels[0], channels[1], channels[2]))
+    }
+}
+
 /// Decoded image with metadata
 #[derive(Debug)]
 pub struct DecodedImage {
@@ -19,6 +87,7 @@ pub struct DecodedImage {
 pub struct EncodeOptions {
     pub quality: Option<u8>,
     pub preserve_transparency: bool,
+    pub background_color: RgbColor,
     pub _dpi: Option<(f64, f64)>,
     pub _icc_profile: Option<Vec<u8>>,
 }
@@ -420,10 +489,9 @@ pub fn convert_image(
     let mut img = decoded.image.clone();
     let mut metadata = preserve_metadata(&decoded.metadata, target_format);
 
-    // Handle transparency for target format
-    if !target_format.supports_transparency() && metadata.has_alpha {
-        // Flatten against white background
-        img = flatten_alpha(&img);
+    // Handle transparency for target format before metadata is adjusted to target capabilities.
+    if !target_format.supports_transparency() && decoded.image.color().has_alpha() {
+        img = flatten_alpha(&img, options.background_color);
         metadata.has_alpha = false;
     }
 
@@ -438,16 +506,21 @@ pub fn convert_image(
     encode_image(&img, target_format, &encode_options)
 }
 
-/// Flatten alpha channel against white background
-fn flatten_alpha(img: &DynamicImage) -> DynamicImage {
+/// Flatten alpha channel against the requested background color.
+fn flatten_alpha(img: &DynamicImage, background: RgbColor) -> DynamicImage {
     let rgba = img.to_rgba8();
     let mut rgb = image::ImageBuffer::new(img.width(), img.height());
 
+    let background = background.channels();
     for (x, y, pixel) in rgba.enumerate_pixels() {
-        let alpha = pixel[3] as f32 / 255.0;
-        let r = (pixel[0] as f32 * alpha + 255.0 * (1.0 - alpha)) as u8;
-        let g = (pixel[1] as f32 * alpha + 255.0 * (1.0 - alpha)) as u8;
-        let b = (pixel[2] as f32 * alpha + 255.0 * (1.0 - alpha)) as u8;
+        let alpha = u16::from(pixel[3]);
+        let inverse_alpha = u16::from(u8::MAX) - alpha;
+        let composite = |source: u8, background: u8| {
+            ((u16::from(source) * alpha + u16::from(background) * inverse_alpha + 127) / 255) as u8
+        };
+        let r = composite(pixel[0], background[0]);
+        let g = composite(pixel[1], background[1]);
+        let b = composite(pixel[2], background[2]);
         rgb.put_pixel(x, y, image::Rgb([r, g, b]));
     }
 
@@ -490,24 +563,98 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_flatten_alpha() {
-        let mut img = image::ImageBuffer::new(2, 2);
-        img.put_pixel(0, 0, image::Rgba([255, 0, 0, 255])); // Red opaque
-        img.put_pixel(1, 0, image::Rgba([0, 255, 0, 128])); // Green semi-transparent
-        img.put_pixel(0, 1, image::Rgba([0, 0, 255, 0])); // Blue transparent
-        img.put_pixel(1, 1, image::Rgba([255, 255, 0, 255])); // Yellow opaque
+    fn parses_short_hex_background_color() {
+        assert_eq!(
+            "#f08".parse::<RgbColor>().unwrap(),
+            RgbColor::new(255, 0, 136)
+        );
+    }
+
+    #[test]
+    fn parses_long_hex_background_color_case_insensitively() {
+        assert_eq!(
+            "#aBcD09".parse::<RgbColor>().unwrap(),
+            RgbColor::new(171, 205, 9)
+        );
+        assert_eq!(
+            "#ABCD09".parse::<RgbColor>().unwrap(),
+            RgbColor::new(171, 205, 9)
+        );
+    }
+
+    #[test]
+    fn parses_comma_separated_rgb_background_color() {
+        assert_eq!(
+            "255,0,128".parse::<RgbColor>().unwrap(),
+            RgbColor::new(255, 0, 128)
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_hex_background_colors() {
+        for value in ["#", "#12", "#12345", "#ggg", "fff"] {
+            assert!(value.parse::<RgbColor>().is_err(), "accepted {value}");
+        }
+    }
+
+    #[test]
+    fn rejects_malformed_or_out_of_range_rgb_background_colors() {
+        for value in ["1,2", "1,2,3,4", "a,2,3", "1,,3", "256,0,0", "-1,2,3"] {
+            assert!(value.parse::<RgbColor>().is_err(), "accepted {value}");
+        }
+    }
+
+    #[test]
+    fn flatten_alpha_composites_transparent_semi_transparent_and_opaque_pixels() {
+        let mut img = image::ImageBuffer::new(3, 1);
+        img.put_pixel(0, 0, image::Rgba([200, 100, 50, 0]));
+        img.put_pixel(1, 0, image::Rgba([110, 120, 130, 128]));
+        img.put_pixel(2, 0, image::Rgba([7, 8, 9, 255]));
 
         let dynamic = DynamicImage::ImageRgba8(img);
-        let flattened = flatten_alpha(&dynamic);
-        let rgb = flattened.to_rgb8();
+        let flattened = flatten_alpha(&dynamic, RgbColor::new(10, 20, 30)).to_rgb8();
 
-        // Opaque red stays red
-        assert_eq!(rgb.get_pixel(0, 0), &image::Rgb([255, 0, 0]));
-        // Semi-transparent green on white -> light green
-        let p = rgb.get_pixel(1, 0);
-        assert!(p[0] > 120 && p[0] < 135);
-        assert!(p[1] > 190);
-        // Transparent blue on white -> white
-        assert_eq!(rgb.get_pixel(0, 1), &image::Rgb([255, 255, 255]));
+        assert_eq!(flattened.get_pixel(0, 0), &image::Rgb([10, 20, 30]));
+        assert_eq!(flattened.get_pixel(1, 0), &image::Rgb([60, 70, 80]));
+        assert_eq!(flattened.get_pixel(2, 0), &image::Rgb([7, 8, 9]));
+
+        let rounding_input = DynamicImage::ImageRgba8(image::ImageBuffer::from_pixel(
+            1,
+            1,
+            image::Rgba([1, 0, 0, 128]),
+        ));
+        let rounded = flatten_alpha(&rounding_input, RgbColor::new(0, 0, 0)).to_rgb8();
+        assert_eq!(rounded.get_pixel(0, 0), &image::Rgb([1, 0, 0]));
+    }
+
+    #[test]
+    fn default_background_is_white() {
+        assert_eq!(RgbColor::default(), RgbColor::new(255, 255, 255));
+
+        let transparent = DynamicImage::ImageRgba8(image::ImageBuffer::from_pixel(
+            1,
+            1,
+            image::Rgba([0, 0, 0, 0]),
+        ));
+        let flattened = flatten_alpha(&transparent, RgbColor::default()).to_rgb8();
+        assert_eq!(flattened.get_pixel(0, 0), &image::Rgb([255, 255, 255]));
+    }
+
+    #[test]
+    fn transparent_image_keeps_alpha_when_target_supports_it() {
+        let image = DynamicImage::ImageRgba8(image::ImageBuffer::from_pixel(
+            1,
+            1,
+            image::Rgba([10, 20, 30, 0]),
+        ));
+        let decoded = DecodedImage {
+            metadata: extract_metadata(&image, ImageFormat::Png),
+            image,
+            source_format: ImageFormat::Png,
+            _frames: Vec::new(),
+        };
+        let encoded = convert_image(&decoded, ImageFormat::Png, &EncodeOptions::default()).unwrap();
+        let converted = image::load_from_memory(&encoded).unwrap().to_rgba8();
+        assert_eq!(converted.get_pixel(0, 0), &image::Rgba([10, 20, 30, 0]));
     }
 }

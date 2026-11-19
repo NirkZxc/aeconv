@@ -1,3 +1,4 @@
+use crate::codecs::RgbColor;
 use crate::engine::{ConversionEngine, ConversionRequest};
 use crate::errors::Result;
 use crate::formats::{ImageFormat, all_operations};
@@ -29,6 +30,10 @@ pub struct Cli {
     /// Quality for lossy formats (1-100)
     #[arg(short, long, global = true, value_parser = clap::value_parser!(u8).range(1..=100))]
     pub quality: Option<u8>,
+
+    /// Background color for flattening transparency (#RGB, #RRGGBB, or R,G,B)
+    #[arg(short = 'b', long, global = true)]
+    pub background: Option<RgbColor>,
 
     /// Enable verbose output
     #[arg(short, long, global = true)]
@@ -156,6 +161,7 @@ fn run_conversion(input: Utf8PathBuf, target_fmt: ImageFormat, cli: &Cli) -> Res
         output_path: cli.output.clone(),
         force_overwrite: cli.force,
         quality: cli.quality,
+        background_color: cli.background.unwrap_or_default(),
     };
 
     let request = ConversionRequest {
@@ -265,5 +271,98 @@ mod tests {
         assert_eq!(ImageFormat::from(FormatArg::Jpg), ImageFormat::Jpeg);
         assert_eq!(ImageFormat::from(FormatArg::Jpeg), ImageFormat::Jpeg);
         assert_eq!(ImageFormat::from(FormatArg::Ico), ImageFormat::Ico);
+    }
+
+    #[test]
+    fn parses_background_option_and_short_alias_for_conversion() {
+        let long = Cli::try_parse_from([
+            "aeconv",
+            "convert",
+            "--from",
+            "png",
+            "--to",
+            "jpg",
+            "image.png",
+            "--background",
+            "#222222",
+        ])
+        .unwrap();
+        assert_eq!(long.background, Some(RgbColor::new(34, 34, 34)));
+
+        let short = Cli::try_parse_from([
+            "aeconv",
+            "convert",
+            "--from",
+            "png",
+            "--to",
+            "jpg",
+            "image.png",
+            "-b",
+            "#fff",
+        ])
+        .unwrap();
+        assert_eq!(short.background, Some(RgbColor::new(255, 255, 255)));
+    }
+
+    #[test]
+    fn parses_short_hex_and_whitespace_rgb_at_cli_boundary() {
+        for (value, expected) in [
+            ("#f08", RgbColor::new(255, 0, 136)),
+            ("1, 2, 3", RgbColor::new(1, 2, 3)),
+        ] {
+            let cli = Cli::try_parse_from([
+                "aeconv",
+                "convert",
+                "--from",
+                "png",
+                "--to",
+                "jpg",
+                "image.png",
+                "--background",
+                value,
+            ])
+            .unwrap();
+            assert_eq!(cli.background, Some(expected));
+        }
+    }
+
+    #[test]
+    fn rejects_malformed_background_values_at_cli_boundary_without_panicking() {
+        // These values reach our RgbColor parser and must produce a clear error.
+        for value in ["#ggg", "#12", "256,0,0"] {
+            let error = Cli::try_parse_from([
+                "aeconv",
+                "convert",
+                "--from",
+                "png",
+                "--to",
+                "jpg",
+                "image.png",
+                "--background",
+                value,
+            ])
+            .unwrap_err();
+            assert!(
+                error.to_string().contains("Invalid background color"),
+                "unexpected error for {value}: {error}"
+            );
+        }
+
+        // Negative values are rejected by RgbColor::from_str (each component must be 0..=255).
+        let error = Cli::try_parse_from([
+            "aeconv",
+            "convert",
+            "--from",
+            "png",
+            "--to",
+            "jpg",
+            "image.png",
+            "--background=-1,2,3",
+        ])
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("Invalid background color"),
+            "unexpected error: {error}"
+        );
     }
 }

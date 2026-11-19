@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-11-19
+
+### Added
+- Custom `--background` / `-b` color for flattening transparency when converting to formats without alpha support; accepts `#RGB`, `#RRGGBB`, or `R,G,B` (default: white)
+- QOI now classified as a transparency-preserving format; RGBA → QOI preserves the alpha channel even when `--background` is supplied
+
+### Fixed
+- `ImageFormat::supports_transparency()` now includes QOI, matching the documented format capabilities
+
 ## [0.1.1] - 2026-11-16
 
 ### Added
@@ -76,7 +85,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ICO: Multi-resolution decoding not fully supported (largest frame only)
 - ICNS: Decoding not supported (encode only)
 - SVG: Encoding (vectorization) not supported
-- No `--background` parameter for transparency flattening (always uses white)
 - EXIF metadata preservation not implemented
 - ICC color profile handling not implemented
 
