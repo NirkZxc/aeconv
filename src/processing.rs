@@ -55,6 +55,7 @@ pub fn resize_image(img: &DynamicImage, width: u32, height: u32) -> Result<Dynam
 /// A radius of zero leaves the image unchanged.
 pub fn apply_round_corners(img: &DynamicImage, corners: RoundCorners) -> Result<DynamicImage> {
     let (width, height) = (img.width(), img.height());
+    let min_dim = u32::min(width, height) as f64;
 
     let radius = match corners {
         RoundCorners::Percent(percent) => {
@@ -63,14 +64,14 @@ pub fn apply_round_corners(img: &DynamicImage, corners: RoundCorners) -> Result<
                     "Invalid round-corners radius: {percent}% (must be a non-negative number)"
                 )));
             }
-            ((percent / 100.0) * f64::from(u32::min(width, height))).round() as u32
+            (percent / 100.0) * min_dim
         }
-        RoundCorners::Pixels(pixels) => pixels,
+        RoundCorners::Pixels(pixels) => pixels as f64,
     };
 
     // Clamp so corners never overlap; the image can never become fully transparent.
-    let radius = radius.min(u32::min(width, height) / 2);
-    if radius == 0 {
+    let radius = radius.min(min_dim / 2.0);
+    if radius <= 0.0 {
         return Ok(img.clone());
     }
 
@@ -97,32 +98,53 @@ pub fn apply_round_corners(img: &DynamicImage, corners: RoundCorners) -> Result<
 ///
 /// Edges are anti-aliased with a smooth falloff over one pixel so corners stay
 /// smooth without visible steps.
-fn corner_mask_alpha(x: u32, y: u32, width: u32, height: u32, radius: u32) -> u8 {
-    let r = radius as f64;
+fn corner_mask_alpha(x: u32, y: u32, width: u32, height: u32, radius: f64) -> u8 {
+    // Pixel centres (x+0.5, y+0.5) guarantee mirror symmetry across both axes:
+    // distance from (x+0.5, y+0.5) to the top-left centre equals distance from
+    // (width-1-x+0.5, y+0.5) to the top-right centre, and likewise vertically.
+    let px = x as f64 + 0.5;
+    let py = y as f64 + 0.5;
+    let r = radius;
+    let w = width as f64;
+    let h = height as f64;
 
-    let alpha = if x < radius && y < radius {
-        // Top-left corner, circle centred at (radius, radius).
-        circle_alpha(x as f64, y as f64, r, r, r)
-    } else if x >= width - radius && y < radius {
-        // Top-right corner, circle centred at (width - radius, radius).
-        circle_alpha(x as f64, y as f64, f64::from(width - radius), r, r)
-    } else if x < radius && y >= height - radius {
-        // Bottom-left corner, circle centred at (radius, height - radius).
-        circle_alpha(x as f64, y as f64, r, f64::from(height - radius), r)
-    } else if x >= width - radius && y >= height - radius {
-        // Bottom-right corner, circle centred at (width - radius, height - radius).
-        circle_alpha(
-            x as f64,
-            y as f64,
-            f64::from(width - radius),
-            f64::from(height - radius),
-            r,
-        )
-    } else {
-        return 255;
-    };
+    // A pixel is affected by a corner if its centre lies inside the corner
+    // square ([0, r] × [0, r] for top-left, etc.) OR within r + 1 of the
+    // corner's circle centre (anti-aliased edge just outside the square).
+    // Pixels outside every corner region remain fully opaque (255).
+    let centres = [
+        (r, r),         // top-left
+        (w - r, r),     // top-right
+        (r, h - r),     // bottom-left
+        (w - r, h - r), // bottom-right
+    ];
+    let in_square = [
+        px <= r && py <= r,         // TL
+        px >= w - r && py <= r,     // TR
+        px <= r && py >= h - r,     // BL
+        px >= w - r && py >= h - r, // BR
+    ];
 
-    alpha.clamp(0, 255)
+    // Among all corners whose region contains this pixel, pick the one whose
+    // circle centre is closest. This matters when corners touch (r == min/2)
+    // and a pixel sits between two centres — the closer centre wins.
+    let mut best_dist = f64::INFINITY;
+    let mut best: Option<(f64, f64)> = None;
+
+    for i in 0..4 {
+        let (cx, cy) = centres[i];
+        let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
+        let in_region = in_square[i] || dist <= r + 1.0;
+        if in_region && dist < best_dist {
+            best_dist = dist;
+            best = Some((cx, cy));
+        }
+    }
+
+    match best {
+        Some((cx, cy)) => circle_alpha(px, py, cx, cy, r),
+        None => 255,
+    }
 }
 
 /// Coverage alpha for one pixel against a quarter-circle of radius `r` centred
@@ -234,9 +256,10 @@ mod tests {
         let img = solid_rgba(100, 100, Rgba([10, 20, 30, 255]));
         let out = apply_round_corners(&img, RoundCorners::Pixels(40)).unwrap();
         let rgba = out.to_rgba8();
-        // Pixel (20, 5) sits just outside the quarter-circle edge (dist ~40.3 > 40)
-        // but within one pixel, so it must carry an intermediate alpha value.
-        let alpha = rgba.get_pixel(20, 5)[3];
+        // Pixel (20, 4) has centre (20.5, 4.5), distance to circle centre (40, 40)
+        // is ~40.50, which is just outside r=40 but within r+1=41, so it carries
+        // an intermediate alpha value.
+        let alpha = rgba.get_pixel(20, 4)[3];
         assert!(
             alpha > 0 && alpha < 255,
             "expected anti-aliased edge, got {alpha}"
@@ -297,14 +320,16 @@ mod tests {
         let rgba = out.to_rgba8();
 
         // Pixel on the anti-aliased corner edge has an intermediate mask.
-        let mask = corner_mask_alpha(0, 16, 100, 100, 20);
+        // Pixel centre (0.5, 14.5) is at distance ~20.26 from corner centre
+        // (20, 20): just outside r=20 but within r+1=21.
+        let mask = corner_mask_alpha(0, 14, 100, 100, 20.0);
         assert!(
             mask > 0 && mask < 255,
             "expected intermediate mask, got {mask}"
         );
         // out = src_alpha * mask / 255 (multiplicative), not min(src, mask).
         let expected = ((128u16 * mask as u16) / 255u16) as u8;
-        assert_eq!(rgba.get_pixel(0, 16)[3], expected);
+        assert_eq!(rgba.get_pixel(0, 14)[3], expected);
     }
 
     #[test]
@@ -328,7 +353,7 @@ mod tests {
         // mask 0 in the corner -> 0.
         assert_eq!(rgba.get_pixel(0, 0)[3], 0);
         // src alpha 255 yields exactly the mask value on the edge.
-        let mask = corner_mask_alpha(0, 16, 100, 100, 20);
+        let mask = corner_mask_alpha(0, 16, 100, 100, 20.0);
         assert_eq!(rgba.get_pixel(0, 16)[3], mask);
     }
 
@@ -339,5 +364,104 @@ mod tests {
         let rgba = out.to_rgba8();
         // centre pixel has mask 255, so source alpha 128 is preserved.
         assert_eq!(rgba.get_pixel(50, 50)[3], 128);
+    }
+
+    #[test]
+    fn round_corners_horizontal_symmetry() {
+        let img = solid_rgba(100, 100, Rgba([10, 20, 30, 255]));
+        let out = apply_round_corners(&img, RoundCorners::Pixels(20)).unwrap();
+        let rgba = out.to_rgba8();
+        // Pixel (x, y) and (99-x, y) must have identical alpha (mirror symmetry).
+        for y in 0..100 {
+            for x in 0..50 {
+                let left = rgba.get_pixel(x, y)[3];
+                let right = rgba.get_pixel(99 - x, y)[3];
+                assert_eq!(left, right, "horizontal asymmetry at ({x}, {y})");
+            }
+        }
+    }
+
+    #[test]
+    fn round_corners_vertical_symmetry() {
+        let img = solid_rgba(100, 100, Rgba([10, 20, 30, 255]));
+        let out = apply_round_corners(&img, RoundCorners::Pixels(20)).unwrap();
+        let rgba = out.to_rgba8();
+        // Pixel (x, y) and (x, 99-y) must have identical alpha (mirror symmetry).
+        for x in 0..100 {
+            for y in 0..50 {
+                let top = rgba.get_pixel(x, y)[3];
+                let bottom = rgba.get_pixel(x, 99 - y)[3];
+                assert_eq!(top, bottom, "vertical asymmetry at ({x}, {y})");
+            }
+        }
+    }
+
+    #[test]
+    fn round_corners_all_four_corners_symmetric() {
+        let img = solid_rgba(100, 100, Rgba([10, 20, 30, 255]));
+        let out = apply_round_corners(&img, RoundCorners::Pixels(20)).unwrap();
+        let rgba = out.to_rgba8();
+        // All four corners at the same offset from their corner must match.
+        for offset in 0..20 {
+            let tl = rgba.get_pixel(offset, offset)[3];
+            let tr = rgba.get_pixel(99 - offset, offset)[3];
+            let bl = rgba.get_pixel(offset, 99 - offset)[3];
+            let br = rgba.get_pixel(99 - offset, 99 - offset)[3];
+            assert_eq!(tl, tr, "TL vs TR asymmetry at offset {offset}");
+            assert_eq!(tl, bl, "TL vs BL asymmetry at offset {offset}");
+            assert_eq!(tl, br, "TL vs BR asymmetry at offset {offset}");
+        }
+    }
+
+    #[test]
+    fn round_corners_fractional_radius_32x32() {
+        // 32×32 at 20% → radius = 6.4 px (fractional, not rounded to 6).
+        let img = solid_rgba(32, 32, Rgba([10, 20, 30, 255]));
+        let out = apply_round_corners(&img, RoundCorners::Percent(20.0)).unwrap();
+        let rgba = out.to_rgba8();
+        // Corner pixel must be transparent.
+        assert_eq!(rgba.get_pixel(0, 0)[3], 0);
+        // Center must be opaque.
+        assert_eq!(rgba.get_pixel(16, 16)[3], 255);
+        // Horizontal symmetry.
+        for y in 0..32 {
+            for x in 0..16 {
+                assert_eq!(
+                    rgba.get_pixel(x, y)[3],
+                    rgba.get_pixel(31 - x, y)[3],
+                    "horizontal asymmetry at ({x}, {y})"
+                );
+            }
+        }
+        // Vertical symmetry.
+        for x in 0..32 {
+            for y in 0..16 {
+                assert_eq!(
+                    rgba.get_pixel(x, y)[3],
+                    rgba.get_pixel(x, 31 - y)[3],
+                    "vertical asymmetry at ({x}, {y})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn round_corners_size_32x32() {
+        let img = solid_rgba(32, 32, Rgba([10, 20, 30, 255]));
+        let out = apply_round_corners(&img, RoundCorners::Pixels(8)).unwrap();
+        let rgba = out.to_rgba8();
+        assert_eq!((out.width(), out.height()), (32, 32));
+        assert_eq!(rgba.get_pixel(0, 0)[3], 0);
+        assert_eq!(rgba.get_pixel(16, 16)[3], 255);
+    }
+
+    #[test]
+    fn round_corners_size_64x64() {
+        let img = solid_rgba(64, 64, Rgba([10, 20, 30, 255]));
+        let out = apply_round_corners(&img, RoundCorners::Pixels(16)).unwrap();
+        let rgba = out.to_rgba8();
+        assert_eq!((out.width(), out.height()), (64, 64));
+        assert_eq!(rgba.get_pixel(0, 0)[3], 0);
+        assert_eq!(rgba.get_pixel(32, 32)[3], 255);
     }
 }
