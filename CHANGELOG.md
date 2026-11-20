@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-11-20
+
+### Added
+- `--resize WxH` option: resize images to exact dimensions using a high-quality Lanczos3 filter; rejects zero dimensions and oversized requests
+- `--round-corners Npx` / `N%` option: round image corners with pixel radius or percent of the shorter side; transparent anti-aliased corners, original resolution preserved
+- Resize and rounded corners can be combined (resize runs before rounding); no intermediate files created
+
+### Fixed (Codex Audit Compliance)
+- Fixed all Clippy warnings (redundant closures, unnecessary casts, unused code, etc.)
+- Removed unused `parse_shorthand` function and dead code
+- Fixed `unwrap()` after `is_some()` checks with proper pattern matching
+- ICNS format: corrected to encode-only (no decoder available in image crate)
+- ICO format: verified self-created ICO decode works, multi-resolution encoding confirmed
+- CLI interface: aligned README with actual subcommand interface (`list`, `formats`, `info` instead of global flags)
+- Transparency handling: PNG→JPEG flattens alpha against white background (documented behavior)
+- Documentation: updated format table to reflect ICNS encode-only, corrected CLI usage examples
+
+### Added (Output Validation)
+- `--output` / `-o` option now validates that output file extension matches target format
+- Rejects mismatched extensions with clear error message (e.g., "Output file extension 'png' does not match target format 'WebP'. Expected one of: webp")
+- Case-insensitive extension matching supported
+- Subdirectory paths supported (e.g., `--output converted/result.webp`)
+
+### Known Limitations (Phase 1)
+- GIF: Multi-frame decoding not supported (first frame only)
+- TIFF: Multi-frame decoding not supported (first frame only)
+- ICO: Multi-resolution decoding not fully supported (largest frame only)
+- ICNS: Decoding not supported (encode only)
+- SVG: Encoding (vectorization) not supported
+- EXIF metadata preservation not implemented
+- ICC color profile handling not implemented
+
+### Planned for Phase 2
+- Individual command binaries with PATH registration
+- Windows installer (MSI) and Linux packages (deb, rpm, AppImage)
+- EXIF metadata preservation
+- ICC color profile support
+- Animated format frame handling
+- Batch conversion with glob patterns
+- Progress indicators for large files
+- Configuration file support
+
 ## [0.1.2] - 2026-11-19
 
 ### Added
@@ -60,45 +102,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ICC color profile handling not implemented
 - Windows installer and PATH registration planned for Phase 2
 - Individual command binaries (jpgtoico, pngtowebp, etc.) planned for Phase 2
-
-## [0.1.3] - 2026-11-20
-
-### Added
-- `--resize WxH` option: resize images to exact dimensions using a high-quality Lanczos3 filter; rejects zero dimensions and oversized requests
-- `--round-corners Npx` / `N%` option: round image corners with pixel radius or percent of the shorter side; transparent anti-aliased corners, original resolution preserved
-- Resize and rounded corners can be combined (resize runs before rounding); no intermediate files created
-
-### Fixed (Codex Audit Compliance)
-- Fixed all Clippy warnings (redundant closures, unnecessary casts, unused code, etc.)
-- Removed unused `parse_shorthand` function and dead code
-- Fixed `unwrap()` after `is_some()` checks with proper pattern matching
-- ICNS format: corrected to encode-only (no decoder available in image crate)
-- ICO format: verified self-created ICO decode works, multi-resolution encoding confirmed
-- CLI interface: aligned README with actual subcommand interface (`list`, `formats`, `info` instead of global flags)
-- Transparency handling: PNG→JPEG flattens alpha against white background (documented behavior)
-- Documentation: updated format table to reflect ICNS encode-only, corrected CLI usage examples
-
-### Added (Output Validation)
-- `--output` / `-o` option now validates that output file extension matches target format
-- Rejects mismatched extensions with clear error message (e.g., "Output file extension 'png' does not match target format 'WebP'. Expected one of: webp")
-- Case-insensitive extension matching supported
-- Subdirectory paths supported (e.g., `--output converted/result.webp`)
-
-### Known Limitations (Phase 1)
-- GIF: Multi-frame decoding not supported (first frame only)
-- TIFF: Multi-frame decoding not supported (first frame only)
-- ICO: Multi-resolution decoding not fully supported (largest frame only)
-- ICNS: Decoding not supported (encode only)
-- SVG: Encoding (vectorization) not supported
-- EXIF metadata preservation not implemented
-- ICC color profile handling not implemented
-
-### Planned for Phase 2
-- Individual command binaries with PATH registration
-- Windows installer (MSI) and Linux packages (deb, rpm, AppImage)
-- EXIF metadata preservation
-- ICC color profile support
-- Animated format frame handling
-- Batch conversion with glob patterns
-- Progress indicators for large files
-- Configuration file support
