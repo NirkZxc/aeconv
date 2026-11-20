@@ -5,6 +5,7 @@ use crate::metadata::ImageMetadata;
 use crate::output::{
     OutputConfig, check_output_path, determine_output_path, validate_quality, write_atomic,
 };
+use crate::processing::RoundCorners;
 use camino::Utf8PathBuf;
 
 /// Conversion request
@@ -13,6 +14,10 @@ pub struct ConversionRequest {
     pub input_path: Utf8PathBuf,
     pub target_format: ImageFormat,
     pub config: OutputConfig,
+    /// Requested resize dimensions `(width, height)`.
+    pub resize: Option<(u32, u32)>,
+    /// Requested rounded corners (pixels or percent of the shorter side).
+    pub round_corners: Option<RoundCorners>,
 }
 
 /// Conversion result
@@ -74,6 +79,8 @@ impl ConversionEngine {
             background_color: request.config.background_color,
             _dpi: decoded.metadata.dpi,
             _icc_profile: decoded.metadata.color_profile.clone(),
+            resize: request.resize,
+            round_corners: request.round_corners,
         };
 
         let output_data = convert_image(&decoded, request.target_format, &encode_options)?;
@@ -127,6 +134,8 @@ mod tests {
             input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
             target_format: ImageFormat::Jpeg,
             config: OutputConfig::default(),
+            resize: None,
+            round_corners: None,
         };
 
         let result = ConversionEngine::convert(request).unwrap();
@@ -147,6 +156,8 @@ mod tests {
             input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
             target_format: ImageFormat::WebP,
             config: OutputConfig::default(),
+            resize: None,
+            round_corners: None,
         };
 
         let result = ConversionEngine::convert(request).unwrap();
@@ -167,6 +178,8 @@ mod tests {
             input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
             target_format: ImageFormat::Ico,
             config: OutputConfig::default(),
+            resize: None,
+            round_corners: None,
         };
 
         let result = ConversionEngine::convert(request).unwrap();
@@ -192,6 +205,8 @@ mod tests {
             input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
             target_format: ImageFormat::Ico,
             config: OutputConfig::default(),
+            resize: None,
+            round_corners: None,
         };
 
         let result = ConversionEngine::convert(request).unwrap();
@@ -236,6 +251,8 @@ mod tests {
             input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
             target_format: ImageFormat::Png,
             config: OutputConfig::default(),
+            resize: None,
+            round_corners: None,
         };
 
         let result = ConversionEngine::convert(request).unwrap();
@@ -260,6 +277,8 @@ mod tests {
             input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
             target_format: ImageFormat::Jpeg,
             config: OutputConfig::default(),
+            resize: None,
+            round_corners: None,
         };
 
         let result = ConversionEngine::convert(request).unwrap();
@@ -283,6 +302,8 @@ mod tests {
             input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
             target_format: ImageFormat::Jpeg,
             config: OutputConfig::default(),
+            resize: None,
+            round_corners: None,
         })
         .unwrap();
         let converted = image::open(&result.output_path).unwrap().to_rgb8();
@@ -310,6 +331,8 @@ mod tests {
                 background_color: crate::codecs::RgbColor::new(34, 51, 68),
                 ..OutputConfig::default()
             },
+            resize: None,
+            round_corners: None,
         };
 
         let result = ConversionEngine::convert(request).unwrap();
@@ -332,6 +355,8 @@ mod tests {
             input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
             target_format: ImageFormat::Bmp,
             config: OutputConfig::default(),
+            resize: None,
+            round_corners: None,
         };
 
         let result = ConversionEngine::convert(request).unwrap();
@@ -352,6 +377,8 @@ mod tests {
             input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
             target_format: ImageFormat::Tiff,
             config: OutputConfig::default(),
+            resize: None,
+            round_corners: None,
         };
 
         let result = ConversionEngine::convert(request).unwrap();
@@ -372,6 +399,8 @@ mod tests {
             input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
             target_format: ImageFormat::Gif,
             config: OutputConfig::default(),
+            resize: None,
+            round_corners: None,
         };
 
         let result = ConversionEngine::convert(request).unwrap();
@@ -402,6 +431,8 @@ mod tests {
                 background_color: crate::codecs::RgbColor::new(10, 20, 30),
                 ..OutputConfig::default()
             },
+            resize: None,
+            round_corners: None,
         };
 
         let result = ConversionEngine::convert(request).unwrap();
@@ -427,6 +458,8 @@ mod tests {
                     background_color: crate::codecs::RgbColor::new(10, 20, 30),
                     ..OutputConfig::default()
                 },
+                resize: None,
+                round_corners: None,
             })
             .unwrap();
             let converted = image::open(&result.output_path).unwrap().to_rgba8();
@@ -446,6 +479,8 @@ mod tests {
                     background_color: crate::codecs::RgbColor::new(34, 51, 68),
                     ..OutputConfig::default()
                 },
+                resize: None,
+                round_corners: None,
             })
             .unwrap();
             let converted = image::open(&result.output_path).unwrap().to_rgb8();
@@ -470,6 +505,8 @@ mod tests {
                 background_color: crate::codecs::RgbColor::new(10, 20, 30),
                 ..OutputConfig::default()
             },
+            resize: None,
+            round_corners: None,
         })
         .unwrap();
         let converted = image::open(&result.output_path).unwrap().to_rgba8();
@@ -494,6 +531,8 @@ mod tests {
                 background_color: crate::codecs::RgbColor::new(0, 255, 0),
                 ..OutputConfig::default()
             },
+            resize: None,
+            round_corners: None,
         })
         .unwrap();
         let converted = image::open(&result.output_path).unwrap().to_rgb8();
@@ -509,6 +548,8 @@ mod tests {
             input_path: Utf8PathBuf::from("/nonexistent/path/test.png"),
             target_format: ImageFormat::Jpeg,
             config: OutputConfig::default(),
+            resize: None,
+            round_corners: None,
         };
 
         let result = ConversionEngine::convert(request);
@@ -531,6 +572,8 @@ mod tests {
             input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
             target_format: ImageFormat::Svg, // SVG encoding not supported
             config: OutputConfig::default(),
+            resize: None,
+            round_corners: None,
         };
 
         let result = ConversionEngine::convert(request);
@@ -538,6 +581,119 @@ mod tests {
         matches!(
             result.unwrap_err(),
             crate::errors::AeconvError::UnsupportedTargetFormat { .. }
+        );
+    }
+
+    #[test]
+    fn test_convert_png_resize_changes_output_dimensions() {
+        let dynamic = create_test_png(); // 100x100
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let input_path = temp_dir.path().join("test.png");
+        dynamic.save(&input_path).unwrap();
+
+        let output_path = temp_dir.path().join("resized.png");
+        let result = ConversionEngine::convert(ConversionRequest {
+            input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
+            target_format: ImageFormat::Png,
+            config: OutputConfig {
+                output_path: Some(Utf8PathBuf::from_path_buf(output_path).unwrap()),
+                ..OutputConfig::default()
+            },
+            resize: Some((50, 40)),
+            round_corners: None,
+        })
+        .unwrap();
+
+        let converted = image::open(&result.output_path).unwrap();
+        assert_eq!((converted.width(), converted.height()), (50, 40));
+    }
+
+    #[test]
+    fn test_convert_png_round_corners_makes_corners_transparent() {
+        let dynamic = create_test_png(); // 100x100 opaque
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let input_path = temp_dir.path().join("test.png");
+        dynamic.save(&input_path).unwrap();
+
+        let output_path = temp_dir.path().join("rounded.png");
+        let result = ConversionEngine::convert(ConversionRequest {
+            input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
+            target_format: ImageFormat::Png,
+            config: OutputConfig {
+                output_path: Some(Utf8PathBuf::from_path_buf(output_path).unwrap()),
+                ..OutputConfig::default()
+            },
+            resize: None,
+            round_corners: Some(crate::processing::RoundCorners::Pixels(20)),
+        })
+        .unwrap();
+
+        let converted = image::open(&result.output_path).unwrap().to_rgba8();
+        // Top-left corner becomes transparent.
+        assert_eq!(converted.get_pixel(0, 0)[3], 0);
+        // Center stays opaque.
+        assert_eq!(converted.get_pixel(50, 50)[3], 255);
+        // Dimensions unchanged.
+        assert_eq!((converted.width(), converted.height()), (100, 100));
+    }
+
+    #[test]
+    fn test_convert_png_resize_then_round_corners_combined() {
+        let dynamic = create_test_png(); // 100x100 opaque
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let input_path = temp_dir.path().join("test.png");
+        dynamic.save(&input_path).unwrap();
+
+        let output_path = temp_dir.path().join("combined.webp");
+        let result = ConversionEngine::convert(ConversionRequest {
+            input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
+            target_format: ImageFormat::WebP,
+            config: OutputConfig {
+                output_path: Some(Utf8PathBuf::from_path_buf(output_path).unwrap()),
+                ..OutputConfig::default()
+            },
+            resize: Some((60, 60)),
+            round_corners: Some(crate::processing::RoundCorners::Pixels(15)),
+        })
+        .unwrap();
+
+        let converted = image::open(&result.output_path).unwrap().to_rgba8();
+        // Resized to 60x60.
+        assert_eq!((converted.width(), converted.height()), (60, 60));
+        // Rounded corners applied on top of the resize: top-left corner transparent.
+        assert_eq!(converted.get_pixel(0, 0)[3], 0);
+        // Center stays opaque.
+        assert_eq!(converted.get_pixel(30, 30)[3], 255);
+    }
+
+    #[test]
+    fn test_convert_resize_rejects_zero_dimensions() {
+        let dynamic = create_test_png();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let input_path = temp_dir.path().join("test.png");
+        dynamic.save(&input_path).unwrap();
+
+        let output_path = temp_dir.path().join("resized_output.png");
+        let result = ConversionEngine::convert(ConversionRequest {
+            input_path: Utf8PathBuf::from_path_buf(input_path).unwrap(),
+            target_format: ImageFormat::Png,
+            config: OutputConfig {
+                output_path: Some(Utf8PathBuf::from_path_buf(output_path).unwrap()),
+                ..OutputConfig::default()
+            },
+            resize: Some((0, 50)),
+            round_corners: None,
+        });
+
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("Invalid resize dimensions"),
+            "unexpected error: {err}"
         );
     }
 }

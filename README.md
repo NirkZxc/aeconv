@@ -16,6 +16,8 @@ A cross-platform command-line utility for converting images between various form
 - **Quality control**: Adjustable quality for lossy formats (JPEG, WebP)
 - **Atomic writes**: Safe file operations with atomic rename
 - **Unicode paths**: Full support for Unicode filenames and paths with spaces
+- **Image resize**: Resize images to exact dimensions with a high-quality Lanczos3 filter (`--resize WxH`)
+- **Rounded corners**: Round image corners with pixel or percent radii (`--round-corners Npx` / `N%`)
 
 ## Installation
 
@@ -118,9 +120,62 @@ aeconv --version
 | `--force` | `-f` | Overwrite existing output file |
 | `--quality` | `-q` | Quality for lossy formats (1-100, default: 90 for JPEG, 80 for WebP) |
 | `--background` | `-b` | Background color when flattening transparency (`#RGB`, `#RRGGBB`, or `R,G,B`; default: white) |
+| `--resize` | | Resize to exact WIDTHxHEIGHT pixels using a Lanczos3 filter (e.g. `--resize 512x512`) |
+| `--round-corners` | | Round corners: radius in pixels (`32px`) or percent of shorter side (`20%`) |
 | `--verbose` | `-v` | Show detailed conversion information |
 | `--help` | `-h` | Show help message |
 | `--version` | `-V` | Show version |
+
+## Image Processing
+
+### Resize (`--resize`)
+
+Resize an image to exact dimensions using a high-quality Lanczos3 filter:
+
+```bash
+# Downscale an image
+aeconv input.png output.png --resize 512x512
+
+# Upscale an image
+aeconv input.png output.png --resize 2000x1500
+
+# Non-square resize (aspect ratio may change)
+aeconv input.png output.png --resize 800x600
+
+# Resize combined with format conversion
+aeconv input.png output.webp --resize 512x512
+```
+
+Dimensions must be greater than zero. Oversized requests are rejected to prevent excessive memory allocation.
+
+### Rounded Corners (`--round-corners`)
+
+Round the corners of an image. The radius can be given in pixels or as a percent of the shorter side:
+
+```bash
+# Fixed pixel radius
+aeconv input.png output.png --round-corners 32px
+
+# Percent of the shorter side
+aeconv input.png output.png --round-corners 20%
+
+# Radius auto-clamps so corners never overlap
+aeconv input.png output.png --round-corners 50%
+```
+
+Corners become transparent with smooth anti-aliased edges; the image resolution is unchanged. For formats without transparency (e.g. JPEG), the corners are flattened against the `--background` color.
+
+### Combined Processing
+
+Resize is applied before rounding corners, so both operations work together without intermediate files:
+
+```bash
+# Resize then round corners, converting to WebP
+aeconv input.png output.webp --resize 512x512 --round-corners 15%
+
+# Resize, round corners, and set a custom background for non-alpha formats
+aeconv input.png output.jpg --resize 400x400 --round-corners 10% --background "#222222"
+```
 
 ## Examples
 

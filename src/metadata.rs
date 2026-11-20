@@ -103,6 +103,7 @@ fn bit_depth_from_color_type(ct: image::ColorType) -> u8 {
 }
 
 /// Preserve metadata when converting between formats
+#[allow(dead_code)]
 pub fn preserve_metadata(source: &ImageMetadata, target_format: ImageFormat) -> ImageMetadata {
     let mut target = source.clone();
 

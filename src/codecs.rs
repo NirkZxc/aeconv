@@ -1,6 +1,7 @@
 use crate::errors::{AeconvError, Result};
 use crate::formats::ImageFormat;
-use crate::metadata::{ImageMetadata, extract_metadata, preserve_metadata};
+use crate::metadata::{ImageMetadata, extract_metadata};
+use crate::processing::RoundCorners;
 use camino::Utf8Path;
 use image::{DynamicImage, ExtendedColorType, ImageEncoder, ImageReader};
 use std::io::Cursor;
@@ -90,6 +91,10 @@ pub struct EncodeOptions {
     pub background_color: RgbColor,
     pub _dpi: Option<(f64, f64)>,
     pub _icc_profile: Option<Vec<u8>>,
+    /// Requested resize dimensions `(width, height)`, applied before rounding.
+    pub resize: Option<(u32, u32)>,
+    /// Requested rounded corners, applied after resize.
+    pub round_corners: Option<RoundCorners>,
 }
 
 /// Decode image from file
@@ -487,12 +492,22 @@ pub fn convert_image(
     options: &EncodeOptions,
 ) -> Result<Vec<u8>> {
     let mut img = decoded.image.clone();
-    let mut metadata = preserve_metadata(&decoded.metadata, target_format);
 
-    // Handle transparency for target format before metadata is adjusted to target capabilities.
-    if !target_format.supports_transparency() && decoded.image.color().has_alpha() {
+    // 1. Resize first, so rounded corners are computed on the final size.
+    if let Some((width, height)) = options.resize {
+        img = crate::processing::resize_image(&img, width, height)?;
+    }
+
+    // 2. Rounded corners second (after resize). Adds an alpha mask at the corners.
+    if let Some(corners) = options.round_corners {
+        img = crate::processing::apply_round_corners(&img, corners)?;
+    }
+
+    // Handle transparency for target format based on the processed image.
+    // Rounded corners introduce transparency even when the source had none,
+    // so it must be flattened for formats without alpha support.
+    if !target_format.supports_transparency() && img.color().has_alpha() {
         img = flatten_alpha(&img, options.background_color);
-        metadata.has_alpha = false;
     }
 
     // Handle color type conversion for specific formats
@@ -501,7 +516,7 @@ pub fn convert_image(
     // Encode
     let mut encode_options = options.clone();
     encode_options.preserve_transparency =
-        metadata.has_alpha && target_format.supports_transparency();
+        img.color().has_alpha() && target_format.supports_transparency();
 
     encode_image(&img, target_format, &encode_options)
 }

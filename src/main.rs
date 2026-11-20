@@ -5,6 +5,7 @@ mod errors;
 mod formats;
 mod metadata;
 mod output;
+mod processing;
 
 use clap::Parser;
 use cli::{Cli, run};

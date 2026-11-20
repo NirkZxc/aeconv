@@ -3,6 +3,7 @@ use crate::engine::{ConversionEngine, ConversionRequest};
 use crate::errors::Result;
 use crate::formats::{ImageFormat, all_operations};
 use crate::output::OutputConfig;
+use crate::processing::RoundCorners;
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
 
@@ -34,6 +35,14 @@ pub struct Cli {
     /// Background color for flattening transparency (#RGB, #RRGGBB, or R,G,B)
     #[arg(short = 'b', long, global = true)]
     pub background: Option<RgbColor>,
+
+    /// Resize image to exact WIDTHxHEIGHT dimensions using a Lanczos3 filter
+    #[arg(long, global = true, value_name = "WIDTHxHEIGHT", value_parser = clap::value_parser!(ResizeArg))]
+    pub resize: Option<ResizeArg>,
+
+    /// Round corners: radius in pixels (e.g. 32px) or percent of shorter side (e.g. 20%)
+    #[arg(long, global = true, value_name = "RADIUS", value_parser = clap::value_parser!(RoundCornersArg))]
+    pub round_corners: Option<RoundCornersArg>,
 
     /// Enable verbose output
     #[arg(short, long, global = true)]
@@ -126,6 +135,60 @@ impl From<FormatArg> for ImageFormat {
     }
 }
 
+/// Resize dimensions parsed from a `WIDTHxHEIGHT` CLI value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ResizeArg(pub u32, pub u32);
+
+impl std::str::FromStr for ResizeArg {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.split('x').collect();
+        if parts.len() != 2 {
+            return Err(format!(
+                "Invalid resize value '{s}'. Expected WIDTHxHEIGHT (e.g. 512x512)"
+            ));
+        }
+        let width = parts[0]
+            .parse::<u32>()
+            .map_err(|_| format!("Invalid resize width '{}' in '{s}'", parts[0]))?;
+        let height = parts[1]
+            .parse::<u32>()
+            .map_err(|_| format!("Invalid resize height '{}' in '{s}'", parts[1]))?;
+        Ok(ResizeArg(width, height))
+    }
+}
+
+/// Rounded corners radius: pixels (`32px`) or percent of the shorter side (`20%`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RoundCornersArg {
+    Percent(f64),
+    Pixels(u32),
+}
+
+impl std::str::FromStr for RoundCornersArg {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let s = s.trim();
+        if let Some(rest) = s.strip_suffix('%') {
+            let value = rest
+                .parse::<f64>()
+                .map_err(|_| format!("Invalid round-corners percent '{}' in '{s}'", rest))?;
+            Ok(RoundCornersArg::Percent(value))
+        } else if let Some(rest) = s.strip_suffix("px") {
+            let value = rest
+                .parse::<u32>()
+                .map_err(|_| format!("Invalid round-corners pixels '{}' in '{s}'", rest))?;
+            Ok(RoundCornersArg::Pixels(value))
+        } else {
+            Err(format!(
+                "Invalid round-corners value '{s}'. Use Npx (e.g. 32px) or N% (e.g. 20%)"
+            ))
+        }
+    }
+}
+
 /// Run the CLI
 pub fn run(cli: Cli) -> Result<()> {
     // Handle shorthand commands (e.g., `aeconv jpgtoico photo.jpg`)
@@ -168,6 +231,11 @@ fn run_conversion(input: Utf8PathBuf, target_fmt: ImageFormat, cli: &Cli) -> Res
         input_path: input,
         target_format: target_fmt,
         config,
+        resize: cli.resize.map(|r| (r.0, r.1)),
+        round_corners: cli.round_corners.map(|r| match r {
+            RoundCornersArg::Percent(p) => RoundCorners::Percent(p),
+            RoundCornersArg::Pixels(p) => RoundCorners::Pixels(p),
+        }),
     };
 
     let result = ConversionEngine::convert(request)?;
@@ -364,5 +432,89 @@ mod tests {
             error.to_string().contains("Invalid background color"),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn parses_resize_dimensions_at_cli_boundary() {
+        let cli = Cli::try_parse_from([
+            "aeconv",
+            "convert",
+            "--from",
+            "png",
+            "image.png",
+            "--resize",
+            "512x512",
+        ])
+        .unwrap();
+        assert_eq!(cli.resize, Some(ResizeArg(512, 512)));
+    }
+
+    #[test]
+    fn rejects_malformed_resize_values_at_cli_boundary() {
+        // These values reach our ResizeArg parser and must produce a clear error.
+        for value in ["512", "512x", "x512", "abcx100", "512xabc"] {
+            let error = Cli::try_parse_from([
+                "aeconv",
+                "convert",
+                "--from",
+                "png",
+                "image.png",
+                "--resize",
+                value,
+            ])
+            .unwrap_err();
+            assert!(
+                error.to_string().contains("Invalid resize"),
+                "unexpected error for {value}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn parses_round_corners_pixels_and_percent_at_cli_boundary() {
+        let pixels = Cli::try_parse_from([
+            "aeconv",
+            "convert",
+            "--from",
+            "png",
+            "image.png",
+            "--round-corners",
+            "32px",
+        ])
+        .unwrap();
+        assert_eq!(pixels.round_corners, Some(RoundCornersArg::Pixels(32)));
+
+        let percent = Cli::try_parse_from([
+            "aeconv",
+            "convert",
+            "--from",
+            "png",
+            "image.png",
+            "--round-corners",
+            "20%",
+        ])
+        .unwrap();
+        assert_eq!(percent.round_corners, Some(RoundCornersArg::Percent(20.0)));
+    }
+
+    #[test]
+    fn rejects_malformed_round_corners_values_at_cli_boundary() {
+        // These values reach our RoundCornersArg parser and must produce a clear error.
+        for value in ["32", "20", "abcpx", "abc%"] {
+            let error = Cli::try_parse_from([
+                "aeconv",
+                "convert",
+                "--from",
+                "png",
+                "image.png",
+                "--round-corners",
+                value,
+            ])
+            .unwrap_err();
+            assert!(
+                error.to_string().contains("Invalid round-corners"),
+                "unexpected error for {value}: {error}"
+            );
+        }
     }
 }

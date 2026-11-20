@@ -61,7 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows installer and PATH registration planned for Phase 2
 - Individual command binaries (jpgtoico, pngtowebp, etc.) planned for Phase 2
 
-## [Unreleased]
+## [0.1.3] - 2026-11-20
+
+### Added
+- `--resize WxH` option: resize images to exact dimensions using a high-quality Lanczos3 filter; rejects zero dimensions and oversized requests
+- `--round-corners Npx` / `N%` option: round image corners with pixel radius or percent of the shorter side; transparent anti-aliased corners, original resolution preserved
+- Resize and rounded corners can be combined (resize runs before rounding); no intermediate files created
 
 ### Fixed (Codex Audit Compliance)
 - Fixed all Clippy warnings (redundant closures, unnecessary casts, unused code, etc.)

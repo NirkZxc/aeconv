@@ -1,6 +1,6 @@
 ﻿[package]
 name = "aeconv"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 description = "Extensible cross-platform file conversion CLI written in Rust, starting with images."
 license = "MIT"
