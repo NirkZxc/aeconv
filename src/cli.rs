@@ -1,3 +1,4 @@
+use crate::batch::{BatchConfig, run_batch};
 use crate::codecs::RgbColor;
 use crate::engine::{ConversionEngine, ConversionRequest};
 use crate::errors::Result;
@@ -81,6 +82,24 @@ pub enum Commands {
 
         #[arg(value_name = "INPUT")]
         input: Utf8PathBuf,
+    },
+
+    /// Batch convert all images in a directory
+    Batch {
+        #[arg(value_name = "INPUT_DIR")]
+        input: Utf8PathBuf,
+
+        /// Source image format (e.g. png, jpg, webp)
+        #[arg(long, value_enum)]
+        from: FormatArg,
+
+        /// Target image format (e.g. webp, jpg, png)
+        #[arg(long, value_enum)]
+        to: FormatArg,
+
+        /// Output directory for converted files
+        #[arg(long)]
+        output_dir: Utf8PathBuf,
     },
 
     /// List all available conversion operations
@@ -207,6 +226,12 @@ pub fn run(cli: Cli) -> Result<()> {
             let target_fmt = to.map(Into::into).unwrap_or(ImageFormat::Png);
             run_conversion(input.clone(), target_fmt, &cli)
         }
+        Commands::Batch {
+            ref input,
+            from,
+            to,
+            ref output_dir,
+        } => run_batch_command(input.clone(), from, to, output_dir.clone(), &cli),
         Commands::List => {
             print_operations();
             Ok(())
@@ -255,6 +280,36 @@ fn run_conversion(input: Utf8PathBuf, target_fmt: ImageFormat, cli: &Cli) -> Res
         println!("{}", result.output_path);
     }
 
+    Ok(())
+}
+
+fn run_batch_command(
+    input_dir: Utf8PathBuf,
+    from: FormatArg,
+    to: FormatArg,
+    output_dir: Utf8PathBuf,
+    cli: &Cli,
+) -> Result<()> {
+    let config = BatchConfig {
+        input_dir,
+        output_dir,
+        source_format: from.into(),
+        target_format: to.into(),
+        quality: cli.quality,
+        background_color: cli.background.unwrap_or_default(),
+        force: cli.force,
+        resize: cli.resize.map(|r| (r.0, r.1)),
+        round_corners: cli.round_corners.map(|r| match r {
+            RoundCornersArg::Percent(p) => RoundCorners::Percent(p),
+            RoundCornersArg::Pixels(p) => RoundCorners::Pixels(p),
+        }),
+        verbose: cli.verbose,
+    };
+
+    let summary = run_batch(config)?;
+    if summary.has_errors() {
+        std::process::exit(1);
+    }
     Ok(())
 }
 

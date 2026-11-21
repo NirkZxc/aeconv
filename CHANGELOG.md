@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-11-21
+
+### Added
+- `batch` command: convert all images in a directory (`aeconv batch <input-dir> --from <fmt> --to <fmt> --output-dir <dir>`)
+- Batch supports `--resize` and `--round-corners`, applied through the same pipeline as single conversions
+- Batch supports `--quality` and `--background` for lossy formats and transparency flattening
+- `--force` to overwrite existing output files; without it, existing outputs are skipped
+- Output files keep the source file name with the target format's extension
+- Batch never overwrites source files, even with `--force`
+- Corrupted or unreadable files do not abort the whole batch; they are reported as errors
+- Empty input directories are handled gracefully
+- Batch exits with a non-zero status code when any file fails
+
+### Fixed
+- Rounded-corner mask symmetry (vertical, horizontal, all four corners) for all sizes including fractional radii (32×32, 64×64)
+
 ## [0.1.3] - 2026-11-20
 
 ### Added

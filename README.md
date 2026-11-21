@@ -177,6 +177,37 @@ aeconv input.png output.webp --resize 512x512 --round-corners 15%
 aeconv input.png output.jpg --resize 400x400 --round-corners 10% --background "#222222"
 ```
 
+## Batch Conversion
+
+The `batch` command converts every image in a directory that matches the
+requested source format. Output files keep their original file names, with the
+extension changed to the target format, and are written to `--output-dir`.
+
+```bash
+# Batch convert all PNGs to WebP
+aeconv batch ./input --from png --to webp --output-dir ./output
+
+# Batch convert with resize and rounded corners
+aeconv batch ./input --from png --to webp --output-dir ./output --resize 512x512 --round-corners 32px
+
+# Batch convert with custom quality and background
+aeconv batch ./input --from png --to jpg --output-dir ./output -q 85 --background "#222222"
+
+# Overwrite existing output files
+aeconv batch ./input --from png --to webp --output-dir ./output --force
+```
+
+Behavior:
+
+- All matching files in the input directory are converted independently, so one
+  damaged file never aborts the whole batch.
+- Existing output files are skipped unless `--force` is given.
+- Output files never overwrite source files, even with `--force`.
+- Empty input directories are reported and produce no output.
+- The command exits with a non-zero status code when any file fails.
+- Shared options (`--quality`, `--background`, `--force`, `--verbose`) apply to
+  every file in the batch.
+
 ## Examples
 
 ```bash
